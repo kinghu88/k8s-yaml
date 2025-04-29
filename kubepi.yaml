@@ -1,0 +1,84 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kubepi-pvc
+  namespace: kubepi
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi  # Adjust the size as needed
+  storageClassName: nfs-client  # Use your cluster's storage class
+
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: kubepi
+  namespace: kubepi
+  labels:
+    app: kubepi
+  annotations:
+    kubesphere.io/creator: huqiu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubepi
+  template:
+    metadata:
+      labels:
+        app: kubepi
+    spec:
+      volumes:
+        - name: host-time
+          hostPath:
+            path: /etc/localtime
+            type: ''
+        - name: kubepi-storage  # Changed from volume-z547gz to more descriptive name
+          persistentVolumeClaim:
+            claimName: kubepi-pvc
+      containers:
+        - name: kubepi
+          image: 'harbor.nosugar.tech/library/kubepi:latest'
+          ports:
+            - name: tcp-80
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: host-time
+              readOnly: true
+              mountPath: /etc/localtime
+            - name: kubepi-storage
+              mountPath: /var/lib/kubepi
+          imagePullPolicy: IfNotPresent
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      serviceAccountName: default
+      serviceAccount: default
+      schedulerName: default-scheduler
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubepi-nodeport-service
+  namespace: kubepi
+spec:
+  type: NodePort
+  selector:
+    app: kubepi
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30180
